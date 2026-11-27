@@ -52,6 +52,13 @@ mark[data-collection-highlight="phrase"]{background:#e7d2b9;color:inherit;border
 
 
 .sentence-header{align-items:baseline;gap:10px}.sentence-id,.sentence-outline{font-size:12px;color:#5d6670;font-weight:750;letter-spacing:.3px;line-height:1.6}.sentence-id{white-space:nowrap}.sentence-outline{min-width:0;overflow-wrap:anywhere}
+.study-fold {padding-block:13px}
+.study-fold > summary {justify-content:flex-start;margin:0;cursor:pointer;list-style:none;color:#203e5d;font-size:clamp(16px,2vw,17px);font-weight:750;border-radius:6px}
+.study-fold > summary::-webkit-details-marker {display:none}
+.study-fold > summary::after {content:"";width:8px;height:8px;border:solid #55728e;border-width:0 2px 2px 0;transform:rotate(45deg);margin-inline-start:auto;margin-inline-end:5px;flex:none}
+.study-fold[open] > summary {margin-bottom:20px}
+.study-fold[open] > summary::after {transform:rotate(225deg)}
+.study-fold > summary:focus-visible {outline:3px solid #78aeeb;outline-offset:4px}
 </style></head>
 <body class="en-hidden">
 <header class="header"><div class="header-inner"><div class="topline"><div class="brand"><div class="brand-icon">E1</div><div><div class="brand-title">考研英语一 · 作文双语精背</div><div class="brand-sub">WRITING STUDY ATLAS / 2021—2025</div></div></div><div class="top-right"><button class="main-btn alt" id="open-collection">积累本 <span id="collection-count">0</span></button><span class="small-pill">10篇作文 · 30段 · 91句</span></div></div><div class="navline"><span class="navlabel">按年份</span><div class="yearbuttons" id="yearbuttons"></div><span class="navlabel">题型</span><div class="typebuttons" id="typebuttons"></div><div class="nav-actions"><button class="main-btn" id="english-toggle" aria-pressed="false">显示全部英文</button><button class="main-btn alt" onclick="document.getElementById('intro').scrollIntoView({behavior:'smooth'})">回到篇首 ↑</button></div></div></div></header>
@@ -59,8 +66,8 @@ mark[data-collection-highlight="phrase"]{background:#e7d2b9;color:inherit;border
 <main class="article"><div class="hero" id="intro"><div class="eyebrow" id="hero-eyebrow"></div><h1 id="hero-title"></h1><div class="meta" id="hero-meta"></div><nav class="quicklinks" aria-label="本文目录"><a href="#logic">01 逻辑链</a><a href="#outline">02 中文提纲</a><a href="#english">03 英文全文</a><a href="#details">04 双语积累</a></nav></div>
 <div class="study-status"><div class="legend"><span class="r">红 = 句式</span><span class="b">蓝 = 短语</span><span>黑 = 普通内容</span></div><div class="status-text">点击任意英文可整体遮盖／显示 · 中文始终可见</div><button id="done-btn" class="progress-btn">○ 标记今日已复习</button></div>
 <section class="section" id="logic"><div class="section-title"><div class="section-label"><span class="index">01</span><h2>全篇逻辑链</h2></div><small>先理解，再背诵</small></div><div class="flows" id="flow-list"></div><div class="overall" id="overall-flow"></div></section>
-<section class="section" id="outline"><div class="section-title"><div class="section-label"><span class="index">02</span><h2>逐句中文提纲</h2></div><small>遮住英文，先想逻辑</small></div><div class="outline-grid" id="outlines"></div></section>
-<section class="section" id="english"><div class="section-title"><div class="section-label"><span class="index">03</span><h2>完整英文范文</h2></div><small>整篇背诵 · 保留原稿</small></div><p class="section-sub">这里显示整篇原稿（包括小作文称呼和落款）。点击正文即可整体显示或遮盖英文。</p><div class="paper-content" id="full-original"></div><div class="full-actions"><span class="foot-hint">整篇原句 · 不擅自重写</span><button class="minor-btn" id="copy-btn">复制整篇英文</button><button class="minor-btn" id="english-toggle-secondary">显示全部英文</button></div></section>
+<details class="section study-fold" id="outline"><summary class="section-title"><span class="index" aria-hidden="true">02</span>逐句中文提纲</summary><div class="outline-grid" id="outlines"></div></details>
+<details class="section study-fold" id="english"><summary class="section-title"><span class="index" aria-hidden="true">03</span>完整英文范文</summary><p class="section-sub">这里显示整篇原稿（包括小作文称呼和落款）。点击正文即可整体显示或遮盖英文。</p><div class="paper-content" id="full-original"></div><div class="full-actions"><span class="foot-hint">整篇原句 · 不擅自重写</span><button class="minor-btn" id="copy-btn">复制整篇英文</button><button class="minor-btn" id="english-toggle-secondary">显示全部英文</button></div></details>
 <section class="section" id="details"><div class="section-title"><div class="section-label"><span class="index">04</span><h2>逐句双语对照与积累</h2></div><small>英文／中文红蓝对应</small></div><p class="section-sub">所有自然段已整合在同一篇文章内，但仍按第1、2、3段分组查阅；每句下方保留全部句式与短语。</p><div id="sentences"></div></section>
 <div class="bottom-nav"><button id="prev-btn">← 上一篇</button><span style="align-self:center;color:#8091a1;font-size:12px" id="current-page"></span><button id="next-btn">下一篇 →</button></div><div class="footer">考研英语一 · 作文双语精背 · 完全离线 · 单文件保存</div>
 </main></div><div class="toast" id="toast" role="status" aria-live="polite"></div><div class="collect-popover" id="collect-popover" role="group" aria-label="积累所选文字" hidden><button type="button" data-collect-type="sentence">句式积累<kbd>E</kbd></button><button type="button" data-collect-type="phrase">词组积累<kbd>R</kbd></button></div>
@@ -76,7 +83,17 @@ function plainEnglish(markup){const element=document.createElement('span');eleme
 function countWords(value){return (value.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*(?:[-‐‑][A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*)*(?:[.,]\d+)*/g)||[]).length;}
 for(const essay of ESSAYS){for(const paragraph of essay.paragraphs){paragraph.plainEnglish=paragraph.sentences.map(sentence=>plainEnglish(sentence.en)).join(' ');paragraph.wordCount=countWords(paragraph.plainEnglish);}essay.wordCount=essay.paragraphs.reduce((total,paragraph)=>total+paragraph.wordCount,0);}
 function parseChain(t){return String(t||'').split(/\s*→\s*/).filter(Boolean).map((s,i)=>`<span class="flow-term">${escapeHTML(s.trim())}</span>${i<String(t||'').split(/\s*→\s*/).filter(Boolean).length-1?'<span class="flow-arrow">→</span>':''}`).join('');}
-function setEssay(id,scroll=true){state.essayId=id;try{localStorage.setItem('essay-studio-last',String(id))}catch(e){} render(); if(scroll)window.scrollTo({top:0,behavior:'smooth'});}
+function openStudySection(target){
+ const section=target?.closest('details.study-fold');
+ if(section)section.open=true;
+}
+function setEssay(id,scroll=true){
+ if(id!==state.essayId){
+  $('outline').open=false;
+  $('english').open=false;
+  if(location.hash)history.replaceState(history.state,'',location.href.split('#')[0]);
+ }
+ state.essayId=id;try{localStorage.setItem('essay-studio-last',String(id))}catch(e){} render(); if(scroll)window.scrollTo({top:0,behavior:'smooth'});}
 function selectYear(year){const found=ESSAYS.find(e=>e.year===year&&e.kind==='小作文')||ESSAYS.find(e=>e.year===year);setEssay(found.id);}
 function yearlyNav(){const e=getEssay();$('yearbuttons').innerHTML=YEARS.map(y=>`<button class="yearbutton ${y===e.year?'active':''}" aria-pressed="${y===e.year}" data-year="${y}">${y}</button>`).join('');$('typebuttons').innerHTML=['小作文','大作文'].map(k=>{let x=ESSAYS.find(x=>x.year===e.year&&x.kind===k);return `<button data-essay="${x.id}" class="typebutton ${x.kind===e.kind?'active':''}" aria-pressed="${x.kind===e.kind}">${k}</button>`}).join(''); $('sidebar-list').innerHTML=YEARS.map(y=>`<div class="side-year">${y} 年</div>`+ESSAYS.filter(x=>x.year===y).map(x=>`<button class="side-item ${x.id===e.id?'active':''}" data-essay="${x.id}"><span></span><span>${x.kind} · ${escapeHTML(x.title)}</span></button>`).join('')).join('');}
 function groupEnglish(essay){
@@ -118,9 +135,15 @@ document.addEventListener('click',e=>{let y=e.target.closest('[data-year]');if(y
 $('english-toggle').addEventListener('click',toggleEnglish);$('english-toggle-secondary').addEventListener('click',toggleEnglish);
 $('done-btn').addEventListener('click',()=>{let e=getEssay(),key='essay-studio-done-'+e.id;let current=false;try{current=localStorage.getItem(key)==='1';localStorage.setItem(key,current?'0':'1')}catch(err){}render()});
 $('copy-btn').addEventListener('click',copyEssay);
+document.querySelector('.quicklinks').addEventListener('click',event=>{
+ const link=event.target.closest('a');
+ if(link)openStudySection($(link.hash.slice(1)));
+});
+window.addEventListener('hashchange',()=>openStudySection($(location.hash.slice(1))));
 $('prev-btn').addEventListener('click',()=>nextEssay(-1));$('next-btn').addEventListener('click',()=>nextEssay(1));
 document.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select,button'))return;if(e.key.toLowerCase()==='h')toggleEnglish();if(e.key==='ArrowRight'&&e.altKey)nextEssay(1);if(e.key==='ArrowLeft'&&e.altKey)nextEssay(-1)});
 try{let saved=Number(localStorage.getItem('essay-studio-last'));if(ESSAYS.some(e=>e.id===saved))state.essayId=saved}catch(e){}render();
+openStudySection($(location.hash.slice(1)));
 
 const COLLECTION_KEY='essay-studio-collection-v1';
 let lastCollectSelection=null;
@@ -346,7 +369,8 @@ $('collection-list').addEventListener('click',event=>{
   const item=records.find(item=>item.id===locate.dataset.locateCollection);if(!item)return;
   $('collection-dialog').close();setEssay(item.essayId,false);state.shown=true;applyVisibility();
   requestAnimationFrame(()=>{
-    const target=document.getElementById(item.anchor)||$('intro');target.scrollIntoView({block:'center',behavior:'auto'});
+    const target=document.getElementById(item.anchor)||$('intro');
+    openStudySection(target);target.scrollIntoView({block:'center',behavior:'auto'});
     target.classList.add('collection-located');setTimeout(()=>target.classList.remove('collection-located'),2000);
   });
 });
