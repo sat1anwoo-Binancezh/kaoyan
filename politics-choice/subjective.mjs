@@ -119,7 +119,7 @@ function renderNotes() {
     list.append(empty);
     return;
   }
-  for (const item of [...state.excerpts].sort((a, b) => a.created - b.created || a.start - b.start)) {
+  for (const item of [...state.excerpts].sort((a, b) => b.created - a.created || a.start - b.start)) {
     const card = document.createElement('article');
     card.className = 'excerpt';
     const actions = document.createElement('div');
