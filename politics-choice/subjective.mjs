@@ -1,4 +1,4 @@
-import {createLayout} from './subjective-layout.mjs?v=2';
+import {createLayout} from './subjective-text.mjs?v=3';
 
 const $ = id => document.getElementById(id);
 const body = $('body');
@@ -330,16 +330,10 @@ window.addEventListener('pagehide', rememberPosition);
 try { history.scrollRestoration = 'manual'; } catch {}
 
 try {
-  const response = await fetch('./subjective-data.json?v=1');
+  const response = await fetch('./subjective-markdown.json?v=3');
   if (!response.ok) throw new Error('Text unavailable');
-  const list = await response.json();
-  await Promise.all(list.map(async doc => {
-    const geometry = await fetch(`./subjective-pdf/${doc.id}.json`);
-    if (!geometry.ok) throw new Error('Layout unavailable');
-    doc.layout = await geometry.json();
-  }));
-  documents = new Map(list.map(doc => [doc.id, doc]));
-  layout = createLayout(body, documents, console.error);
+  documents = new Map((await response.json()).map(doc => [doc.id, doc]));
+  layout = createLayout(body, documents);
   try {
     const raw = localStorage.getItem(storageKey);
     if (raw) state = validate(JSON.parse(raw));
