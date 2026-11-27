@@ -5,25 +5,29 @@
 <title>政治宝典 · 主观题积累本</title>
 <style>
   *{box-sizing:border-box}body{margin:0;background:#eef0f3;color:#202834;font:15px/1.7 "Microsoft YaHei","PingFang SC",sans-serif}
-  header{position:sticky;top:0;z-index:2;background:#fffffff5;border-bottom:1px solid #dbe1e7;padding:12px max(14px,calc((100vw - 1000px)/2))}
+  header{position:sticky;top:0;z-index:2;background:#fffffff5;border-bottom:1px solid #dbe1e7;padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   h1{display:flex;align-items:center;gap:10px;margin:0 0 9px;font-size:21px}h2{margin:0 0 8px;font-size:22px}
   .toolbar,.actions,.bookmark-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.toolbar + .toolbar{margin-top:8px}
   button,select,input,a.link{font:inherit;font-size:13px;border:1px solid #c9d1dc;background:white;color:#293443;border-radius:6px;padding:7px 10px}button{cursor:pointer}button.active{background:#195f54;border-color:#195f54;color:white}button:disabled{opacity:.45;cursor:default}a.link{text-decoration:none;white-space:nowrap}
   main{max-width:1000px;margin:auto;padding:0 14px 70px}.tip,.source{font-size:13px;color:#536171}.paper,.excerpt{background:white;border:1px solid #dbe1e7;border-radius:9px;margin:14px 0;padding:clamp(14px,3vw,30px)}
-  #body,.clip{white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}.section-title{font-weight:700;color:#1a2734}.frequency{color:#4a5a6a}.clip{margin:12px 0}.excerpt .actions{font-size:13px;color:#536171}.excerpt input{width:100%}
+  .clip{white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;margin:12px 0}.excerpt .actions{font-size:13px;color:#536171}.excerpt input{width:100%}
+  .paper{padding:0;border:0;background:none}.pdf-surface{position:relative;isolation:isolate;overflow:hidden;background:#fff;container-type:inline-size;box-shadow:0 1px 4px #1421321a}.pdf-surface + .pdf-surface{margin-top:14px}.pdf-surface canvas,.glyph-layer{position:absolute;inset:0;width:100%;height:100%}.pdf-surface canvas{pointer-events:none}.glyph-layer{white-space:pre;color:transparent;font-size:0;cursor:text;user-select:text}.pdf-glyph{position:absolute;line-height:1;color:transparent;white-space:pre;user-select:text}.pdf-glyph.collected{background:#ffdb476b;mix-blend-mode:multiply}.pdf-glyph::selection{color:transparent;background:#458cf25c}.pdf-surface[data-error]::before{content:attr(data-error);position:absolute;inset:16px auto auto 16px}.pdf-topic{margin:14px 0 22px}.pdf-topic .pdf-surface + .pdf-surface{margin-top:0}.topic-meta{font-size:12px;color:#44576c;padding:6px 10px;background:#e0e7ef;border-radius:6px 6px 0 0}
   mark{background:#ffe36b;color:inherit}.empty{padding:50px 10px;text-align:center;color:#65717e}
   dialog{width:520px;max-width:94vw;max-height:80vh;border:1px solid #c9d1dc;border-radius:10px;padding:16px}.bookmark-row{margin:10px 0}.bookmark-row input{flex:1;min-width:90px}.spacer{flex:1}
   #toast{position:fixed;z-index:3;bottom:22px;left:50%;transform:translateX(-50%);background:#173f37;color:white;padding:8px 13px;border-radius:8px;max-width:94vw}#toast button{margin-left:8px}
   :focus-visible{outline:3px solid #347bc8;outline-offset:2px}[hidden]{display:none!important}
-  @media(max-width:600px){header{padding:9px 10px}h1{font-size:18px}button,select,a.link{padding:5px 7px}main{padding-inline:8px}}
+  header h1,header .toolbar + .toolbar{margin:0}header h1{white-space:nowrap}header .toolbar{flex:1}header .toolbar:last-child{justify-content:flex-end}
+  @media(min-width:1000px){header{flex-wrap:nowrap}header .toolbar{flex-wrap:nowrap}header #openBookmarks{margin-left:auto}header #noteTools:not([hidden]){flex:0 0 auto}}
+  @media(max-width:600px){header{padding:9px 10px;gap:8px}h1{font-size:18px}button,select,a.link{padding:5px 7px}main{padding-inline:8px}}
   @media print{header,#reading,#toast,.actions,input,dialog{display:none!important}body,main{background:white;padding:0}.excerpt{break-inside:avoid;border:0;padding:0}#notebook{display:block!important}}
 </style>
 <header>
-  <h1><a class="link" href="./?v=subjective-1" aria-label="切换到客观题">⇄ 客观题</a>政治宝典 · 主观题</h1>
+  <h1><a class="link" href="./?v=layout-2" aria-label="切换到客观题">⇄ 客观题</a>政治宝典 · 主观题</h1>
   <div class="toolbar">
     <button id="bookTab" class="active" aria-pressed="true">原文</button>
     <button id="notesTab" aria-pressed="false">积累本 <span id="count">0</span></button>
     <select id="subjects" aria-label="跳转科目"></select>
+    <select id="order" aria-label="考频排序"><option value="original">原版顺序</option><option value="subject-frequency">本科考频降序</option><option value="all-frequency">全科考频降序</option></select>
     <button id="resume">继续阅读</button>
     <button id="addBookmark">添加当前位置书签</button>
     <button id="openBookmarks">我的书签 <span id="bookmarkCount">0</span></button>
@@ -35,7 +39,7 @@
 <main>
   <section id="reading">
     <p class="tip">框选正文后按 <kbd>R</kbd> 标黄并收录。再次框选黄色文字按 <kbd>R</kbd> 取消。也可以用 <button id="toggleSelection" type="button">收录 / 取消选中文字</button>。</p>
-    <article class="paper"><h2 id="title">正在载入主观题…</h2><p id="source" class="source"></p><div id="body"></div></article>
+    <article class="paper"><h2 id="title">正在载入主观题…</h2><div id="body"></div></article>
   </section>
   <section id="notebook" hidden aria-label="主观题积累本"></section>
 </main>
@@ -45,5 +49,5 @@
 </dialog>
 <input id="importFile" type="file" accept=".json,application/json" hidden>
 <div id="toast" role="status" hidden></div>
-<script type="module" src="./subjective.mjs?v=1"></script>
+<script type="module" src="./subjective.mjs?v=2"></script>
 </html>

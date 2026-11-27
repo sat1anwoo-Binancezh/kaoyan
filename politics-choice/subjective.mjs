@@ -1,10 +1,12 @@
+import {createLayout} from './subjective-layout.mjs?v=2';
+
 const $ = id => document.getElementById(id);
 const body = $('body');
 const storageKey = 'politics-subjective-pdf-text-v1';
-const emptyState = () => ({excerpts: [], bookmarks: [], positions: {}, document: '34'});
+const emptyState = () => ({excerpts: [], bookmarks: [], positions: {}, document: '34', order: 'original', allPosition: null});
 let state = emptyState();
 let documents = new Map();
-let current, toastTimer, positionTimer;
+let current, layout, toastTimer, positionTimer;
 let reading = true;
 
 function toast(message, undo) {
@@ -38,50 +40,16 @@ function updateCount() {
 }
 
 function renderText() {
-  const spans = state.excerpts.filter(item => item.document === current.id).sort((a, b) => a.start - b.start);
-  const output = document.createDocumentFragment();
-  let start = 0;
-  let index = 0;
-  for (const line of current.text.split('\n')) {
-    const row = document.createElement('span');
-    if (line.startsWith('考点')) row.className = 'section-title';
-    if (line.startsWith('频次')) row.className = 'frequency';
-    const end = start + line.length;
-    let cursor = start;
-    while (index < spans.length && spans[index].end <= start) index++;
-    for (let i = index; i < spans.length && spans[i].start < end; i++) {
-      const item = spans[i];
-      const a = Math.max(cursor, item.start), b = Math.min(end, item.end);
-      if (a >= b) continue;
-      row.append(current.text.slice(cursor, a));
-      const mark = document.createElement('mark');
-      mark.textContent = current.text.slice(a, b);
-      row.append(mark);
-      cursor = b;
-    }
-    row.append(current.text.slice(cursor, end));
-    if (start) output.append('\n');
-    output.append(row);
-    start = end + 1;
-  }
-  body.replaceChildren(output);
+  layout?.highlight(state.excerpts);
   updateCount();
 }
 
-function selectionOffsets() {
+function selectionRanges() {
   const selection = window.getSelection();
-  if (!current || !reading || !selection?.rangeCount || selection.isCollapsed) return null;
+  if (!current || !reading || !selection?.rangeCount || selection.isCollapsed) return [];
   const range = selection.getRangeAt(0);
-  if (!body.contains(range.startContainer) || !body.contains(range.endContainer)) return null;
-  const prefix = document.createRange();
-  prefix.selectNodeContents(body);
-  prefix.setEnd(range.startContainer, range.startOffset);
-  let start = prefix.toString().length;
-  prefix.setEnd(range.endContainer, range.endOffset);
-  let end = prefix.toString().length;
-  while (start < end && /\s/.test(current.text[start])) start++;
-  while (start < end && /\s/.test(current.text[end - 1])) end--;
-  return end > start ? {start, end} : null;
+  if (!body.contains(range.startContainer) || !body.contains(range.endContainer)) return [];
+  return layout.selectedRanges(range);
 }
 
 function labelFor(documentId, start) {
@@ -92,15 +60,7 @@ function labelFor(documentId, start) {
 
 const hasText = (documentId, start, end) => end > start && documents.get(documentId).text.slice(start, end).trim() !== '';
 const excerptId = (documentId, start, end) => `${documentId}-${start}-${end}`;
-function toggleSelection() {
-  const range = selectionOffsets();
-  if (!range) {
-    toast('请先框选主观题正文。');
-    return;
-  }
-  const {start, end} = range;
-  const documentId = current.id;
-  const before = state.excerpts;
+function applyRange(before, {document: documentId, start, end}) {
   const overlapping = before.filter(item => item.document === documentId && item.start < end && item.end > start).sort((a, b) => a.start - b.start);
   const gaps = [];
   let cursor = start;
@@ -123,10 +83,23 @@ function toggleSelection() {
       if (hasText(documentId, end, item.end)) next.push(create(end, item.end, item));
     }
   }
-  if (!save({...state, excerpts: next})) return;
+  return {excerpts: next, added: gaps.length > 0};
+}
+
+function toggleSelection(ranges = selectionRanges()) {
+  if (!ranges.length) return toast('请先框选主观题正文。');
+  const before = state.excerpts;
+  let excerpts = before;
+  let added = false;
+  for (const range of ranges) {
+    const result = applyRange(excerpts, range);
+    excerpts = result.excerpts;
+    added ||= result.added;
+  }
+  if (!save({...state, excerpts})) return;
   window.getSelection().removeAllRanges();
   renderText();
-  toast(gaps.length ? '已标黄并加入积累本' : '已取消选中文字的摘录', () => restoreExcerpts(before));
+  toast(added ? '已收录选中文字' : '已取消选中文字的摘录', () => restoreExcerpts(before));
 }
 
 function restoreExcerpts(excerpts) {
@@ -185,49 +158,24 @@ function anchor() {
   return document.querySelector('header').getBoundingClientRect().bottom + 14;
 }
 
-function offsetAtReadingPosition() {
-  const rect = body.getBoundingClientRect();
-  if (!body.firstChild || rect.top > anchor()) return 0;
-  const x = rect.left + 3, y = Math.min(anchor(), innerHeight - 1);
-  const hit = document.caretRangeFromPoint?.(x, y);
-  if (hit && body.contains(hit.startContainer)) {
-    const range = document.createRange();
-    range.selectNodeContents(body);
-    range.setEnd(hit.startContainer, hit.startOffset);
-    return range.toString().length;
-  }
-  let offset = 0;
-  for (const child of body.childNodes) {
-    if (child.nodeType === Node.ELEMENT_NODE && child.getBoundingClientRect().bottom > anchor()) break;
-    offset += child.textContent.length;
-  }
-  return offset;
+function readingPosition() {
+  return layout?.at(anchor()) ?? {document: current.id, offset: 0};
 }
 
-function jumpToOffset(offset) {
-  if (!offset) {
-    window.scrollTo(0, 0);
-    return;
-  }
-  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-  let node;
-  while ((node = walker.nextNode())) {
-    if (offset >= node.length) { offset -= node.length; continue; }
-    const range = document.createRange();
-    range.setStart(node, offset);
-    range.setEnd(node, offset + 1);
-    const rect = range.getBoundingClientRect();
-    if (rect.height) window.scrollTo(0, window.scrollY + rect.top - anchor());
-    return;
-  }
+function jumpToOffset(offset, id = current.id) {
+  if (!layout.jump(id, offset, anchor())) window.scrollTo(0, 0);
 }
 
 function rememberPosition() {
   clearTimeout(positionTimer);
   if (!reading || !current) return;
-  const offset = offsetAtReadingPosition();
-  if (offset !== state.positions[current.id] || state.document !== current.id) {
-    save({...state, document: current.id, positions: {...state.positions, [current.id]: offset}});
+  const position = readingPosition();
+  if (state.order === 'all-frequency') {
+    if (state.allPosition?.document !== position.document || state.allPosition.offset !== position.offset) {
+      save({...state, allPosition: position});
+    }
+  } else if (position.offset !== state.positions[current.id] || state.document !== current.id) {
+    save({...state, document: current.id, positions: {...state.positions, [current.id]: position.offset}});
   }
 }
 
@@ -237,6 +185,7 @@ function showReading(on) {
   $('notebook').hidden = on;
   $('noteTools').hidden = on;
   $('subjects').hidden = !on;
+  $('order').hidden = !on;
   $('resume').hidden = !on;
   $('addBookmark').hidden = !on;
   $('bookTab').classList.toggle('active', on);
@@ -245,17 +194,21 @@ function showReading(on) {
   $('notesTab').setAttribute('aria-pressed', String(!on));
 }
 
-function openDocument(id, offset) {
+function openDocument(id, offset, order = state.order) {
   if (!documents.has(id)) return;
-  if (current && current.id !== id) rememberPosition();
+  if (current && (current.id !== id || state.order !== order)) rememberPosition();
   current = documents.get(id);
   showReading(true);
   $('subjects').value = id;
-  $('title').textContent = `${current.name}（第 ${id} 题）`;
-  $('source').textContent = `研之道 · ${current.file}`;
+  $('order').value = order;
+  $('title').hidden = true;
+  if (state.document !== id || state.order !== order) save({...state, document: id, order});
+  layout.show(id, order);
   renderText();
-  jumpToOffset(offset ?? state.positions[id] ?? 0);
-  if (state.document !== id) save({...state, document: id});
+  if (offset !== undefined) jumpToOffset(offset, id);
+  else if (order === 'all-frequency' && state.allPosition) jumpToOffset(state.allPosition.offset, state.allPosition.document);
+  else if (order !== 'all-frequency' && state.positions[id] !== undefined) jumpToOffset(state.positions[id], id);
+  else window.scrollTo(0, 0);
 }
 
 function renderBookmarks() {
@@ -303,25 +256,40 @@ function validate(data) {
     return {id, document, offset, label};
   });
   const positions = Object.fromEntries(Object.entries(data.positions || {}).filter(([id, value]) => validOffset(id, value)));
-  return {excerpts, bookmarks, positions, document: documents.has(data.document) ? data.document : '34'};
+  const order = ['original', 'subject-frequency', 'all-frequency'].includes(data.order) ? data.order : 'original';
+  const allPosition = data.allPosition && validOffset(data.allPosition.document, data.allPosition.offset) ? data.allPosition : null;
+  return {excerpts, bookmarks, positions, order, allPosition, document: documents.has(data.document) ? data.document : '34'};
 }
 
 $('toggleSelection').onmousedown = event => event.preventDefault();
-$('toggleSelection').onclick = toggleSelection;
+$('toggleSelection').onclick = () => toggleSelection();
 document.addEventListener('keydown', event => {
-  if (event.key.toLowerCase() !== 'r' || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.target.closest?.('input, textarea, select, [contenteditable]') || !selectionOffsets()) return;
-  event.preventDefault();
-  toggleSelection();
+  if (event.key.toLowerCase() !== 'r' || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  const ranges = selectionRanges();
+  if (ranges.length) {
+    event.preventDefault();
+    toggleSelection(ranges);
+  }
 });
 $('bookTab').onclick = () => { if (current && !reading) openDocument(current.id); };
 $('notesTab').onclick = () => { rememberPosition(); showReading(false); renderNotes(); window.scrollTo(0, 0); };
-$('subjects').onchange = event => openDocument(event.target.value);
-$('resume').onclick = () => { if (current) jumpToOffset(state.positions[current.id] ?? 0); };
+$('subjects').onchange = event => openDocument(event.target.value, undefined, state.order === 'all-frequency' ? 'subject-frequency' : state.order);
+$('order').onchange = event => {
+  if (!current) return;
+  openDocument(current.id, undefined, event.target.value);
+  window.scrollTo(0, 0);
+};
+$('resume').onclick = () => {
+  if (!current) return;
+  const position = state.order === 'all-frequency' ? state.allPosition : {document: current.id, offset: state.positions[current.id] ?? 0};
+  if (position) jumpToOffset(position.offset, position.document);
+};
 $('addBookmark').onclick = () => {
   if (!current) return;
-  const offset = offsetAtReadingPosition();
-  if (state.bookmarks.some(item => item.document === current.id && item.offset === offset)) return toast('当前位置已有书签');
-  const bookmark = {id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, document: current.id, offset, label: `${current.name} · ${labelFor(current.id, offset)}`};
+  const position = readingPosition();
+  if (state.bookmarks.some(item => item.document === position.document && item.offset === position.offset)) return toast('当前位置已有书签');
+  const doc = documents.get(position.document);
+  const bookmark = {id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, ...position, label: `${doc.name} · ${labelFor(doc.id, position.offset)}`};
   if (save({...state, bookmarks: [...state.bookmarks, bookmark]})) { updateCount(); toast('已添加当前位置书签'); }
 };
 $('openBookmarks').onclick = () => { renderBookmarks(); $('bookmarkDialog').showModal(); };
@@ -364,7 +332,14 @@ try { history.scrollRestoration = 'manual'; } catch {}
 try {
   const response = await fetch('./subjective-data.json?v=1');
   if (!response.ok) throw new Error('Text unavailable');
-  documents = new Map((await response.json()).map(doc => [doc.id, doc]));
+  const list = await response.json();
+  await Promise.all(list.map(async doc => {
+    const geometry = await fetch(`./subjective-pdf/${doc.id}.json`);
+    if (!geometry.ok) throw new Error('Layout unavailable');
+    doc.layout = await geometry.json();
+  }));
+  documents = new Map(list.map(doc => [doc.id, doc]));
+  layout = createLayout(body, documents, console.error);
   try {
     const raw = localStorage.getItem(storageKey);
     if (raw) state = validate(JSON.parse(raw));
