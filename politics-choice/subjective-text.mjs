@@ -54,6 +54,15 @@ export function createLayout(root, documents) {
         node.className = `source-${kind}`;
         content(node, doc, left, right, styles);
         parent.append(node);
+        if (kind === 'choice') {
+          const source = document.createElement('a');
+          source.className = 'source-page';
+          source.href = `./objective-pdf.html?page=${codeEnd}`;
+          source.target = '_blank';
+          source.rel = 'noopener';
+          source.textContent = '核对原图';
+          parent.append(source);
+        }
       }
     }
   }

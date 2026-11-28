@@ -1,9 +1,13 @@
-import {createLayout} from './subjective-text.mjs?v=3';
+import {createLayout} from './subjective-text.mjs?v=5';
 
 const $ = id => document.getElementById(id);
 const body = $('body');
-const storageKey = 'politics-subjective-pdf-text-v1';
-const emptyState = () => ({excerpts: [], bookmarks: [], positions: {}, document: '34', order: 'original', allPosition: null});
+const objective = document.documentElement.dataset.reader === 'objective';
+const readerName = objective ? '客观题' : '主观题';
+const firstId = objective ? '1' : '34';
+const backupBook = objective ? 'politics-objective-2027' : 'politics-subjective-2027';
+const storageKey = objective ? 'politics-objective-text-v1' : 'politics-subjective-pdf-text-v1';
+const emptyState = () => ({excerpts: [], bookmarks: [], positions: {}, document: firstId, order: 'original', allPosition: null});
 let state = emptyState();
 let documents = new Map();
 let current, layout, toastTimer, positionTimer;
@@ -87,7 +91,7 @@ function applyRange(before, {document: documentId, start, end}) {
 }
 
 function toggleSelection(ranges = selectionRanges()) {
-  if (!ranges.length) return toast('请先框选主观题正文。');
+  if (!ranges.length) return toast('请先框选正文。');
   const before = state.excerpts;
   let excerpts = before;
   let added = false;
@@ -258,7 +262,7 @@ function validate(data) {
   const positions = Object.fromEntries(Object.entries(data.positions || {}).filter(([id, value]) => validOffset(id, value)));
   const order = ['original', 'subject-frequency', 'all-frequency'].includes(data.order) ? data.order : 'original';
   const allPosition = data.allPosition && validOffset(data.allPosition.document, data.allPosition.offset) ? data.allPosition : null;
-  return {excerpts, bookmarks, positions, order, allPosition, document: documents.has(data.document) ? data.document : '34'};
+  return {excerpts, bookmarks, positions, order, allPosition, document: documents.has(data.document) ? data.document : firstId};
 }
 
 $('toggleSelection').onmousedown = event => event.preventDefault();
@@ -296,10 +300,10 @@ $('openBookmarks').onclick = () => { renderBookmarks(); $('bookmarkDialog').show
 $('closeBookmarks').onclick = () => $('bookmarkDialog').close();
 $('print').onclick = () => window.print();
 $('export').onclick = () => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify({version: 1, book: 'politics-subjective-2027', ...state})], {type: 'application/json'}));
+  const url = URL.createObjectURL(new Blob([JSON.stringify({version: 1, book: backupBook, ...state})], {type: 'application/json'}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = '政治主观题积累本备份.json';
+  link.download = `政治${readerName}积累本备份.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
@@ -310,14 +314,14 @@ $('importFile').onchange = async event => {
   try {
     if (file.size > 5000000) throw new Error('Backup too large');
     const data = JSON.parse(await file.text());
-    if (data.version !== 1 || data.book !== 'politics-subjective-2027') throw new Error('Wrong backup type');
+    if (data.version !== 1 || data.book !== backupBook) throw new Error('Wrong backup type');
     const imported = validate(data);
     const merge = (a, b) => [...new Map([...a, ...b].map(item => [item.id, item])).values()];
     if (save({...state, excerpts: merge(state.excerpts, imported.excerpts), bookmarks: merge(state.bookmarks, imported.bookmarks), positions: {...state.positions, ...imported.positions}})) {
-      renderText(); renderNotes(); toast('已合并导入主观题积累与书签');
+      renderText(); renderNotes(); toast('已合并导入积累与书签');
     }
   } catch {
-    toast('导入失败，请选择主观题积累本导出的备份。');
+    toast(`导入失败，请选择${readerName}积累本导出的备份。`);
   } finally {
     event.target.value = '';
   }
@@ -330,7 +334,7 @@ window.addEventListener('pagehide', rememberPosition);
 try { history.scrollRestoration = 'manual'; } catch {}
 
 try {
-  const response = await fetch('./subjective-markdown.json?v=3');
+  const response = await fetch(objective ? './objective-markdown.json?v=1' : './subjective-markdown.json?v=3');
   if (!response.ok) throw new Error('Text unavailable');
   documents = new Map((await response.json()).map(doc => [doc.id, doc]));
   layout = createLayout(body, documents);
@@ -340,8 +344,8 @@ try {
   } catch {
     toast('已有记录未能读取。');
   }
-  for (const doc of documents.values()) $('subjects').add(new Option(`${doc.name} · 第 ${doc.id} 题`, doc.id));
+  for (const doc of documents.values()) $('subjects').add(new Option(objective ? doc.name : `${doc.name} · 第 ${doc.id} 题`, doc.id));
   openDocument(state.document);
 } catch {
-  $('title').textContent = '主观题原文载入失败，请刷新重试。';
+  $('title').textContent = `${readerName}原文载入失败，请刷新重试。`;
 }
