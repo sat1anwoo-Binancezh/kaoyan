@@ -1,4 +1,5 @@
 import {createLayout} from './subjective-text.mjs?v=5';
+import {exportImageBackup, isImageBackup, loadImages, mergeImages, readImageBackup, removeImage, updateImageNote} from './original-excerpts.mjs?v=1';
 
 const $ = id => document.getElementById(id);
 const body = $('body');
@@ -16,6 +17,8 @@ let state = emptyState();
 let documents = new Map();
 let current, layout, toastTimer, positionTimer;
 let reading = true;
+let originalExcerpts = [];
+let imageURLs = [];
 
 function toast(message, undo) {
   clearTimeout(toastTimer);
@@ -43,8 +46,35 @@ function save(next = state) {
 }
 
 function updateCount() {
-  $('count').textContent = state.excerpts.length;
+  $('count').textContent = state.excerpts.length + (reader === readers.objective ? originalExcerpts.length : 0);
   $('bookmarkCount').textContent = state.bookmarks.length;
+}
+
+function clearNoteImages() {
+  for (const url of imageURLs) URL.revokeObjectURL(url);
+  imageURLs = [];
+}
+
+async function refreshOriginalExcerpts() {
+  try {
+    originalExcerpts = await loadImages();
+    if (reader === readers.objective) {
+      updateCount();
+      if (!reading) renderNotes();
+    }
+  } catch {
+    if (reader === readers.objective) toast('无法读取原图摘录，请重试。');
+  }
+}
+
+async function changeOriginalExcerpts(change, message, undo) {
+  try {
+    await change();
+    await refreshOriginalExcerpts();
+    if (reader === readers.objective && message) toast(message, undo);
+  } catch {
+    if (reader === readers.objective) toast('无法保存原图摘录，请重试。');
+  }
 }
 
 function renderText() {
@@ -119,27 +149,45 @@ function restoreExcerpts(excerpts) {
 
 function renderNotes() {
   const list = $('notebook');
+  clearNoteImages();
   list.replaceChildren();
-  if (!state.excerpts.length) {
+  const entries = reader === readers.objective ? [...state.excerpts, ...originalExcerpts] : state.excerpts;
+  if (!entries.length) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = '积累本为空。回到原文框选文字，按 R 收录。';
     list.append(empty);
     return;
   }
-  for (const item of [...state.excerpts].sort((a, b) => b.created - a.created || a.start - b.start)) {
+  for (const item of [...entries].sort((a, b) => b.created - a.created || (a.start ?? 0) - (b.start ?? 0))) {
+    const original = item.blob instanceof Blob;
     const card = document.createElement('article');
     card.className = 'excerpt';
     const actions = document.createElement('div');
     actions.className = 'actions';
     const label = document.createElement('span');
-    label.textContent = `${documents.get(item.document).name} · ${labelFor(item.document, item.start)}`;
-    const back = document.createElement('button');
+    label.textContent = original
+      ? '原图摘录'
+      : `${documents.get(item.document).name} · ${labelFor(item.document, item.start)}`;
+    const back = document.createElement(original ? 'a' : 'button');
     back.textContent = '回到原文';
-    back.onclick = () => openDocument(item.document, item.start);
+    if (original) {
+      back.className = 'link';
+      back.href = `./objective-pdf.html?page=${item.page}`;
+      back.target = '_blank';
+      back.rel = 'noopener';
+    } else {
+      back.onclick = () => openDocument(item.document, item.start);
+    }
     const remove = document.createElement('button');
     remove.textContent = '移出积累本';
     remove.onclick = () => {
+      if (original) {
+        return changeOriginalExcerpts(
+          () => removeImage(item.id), '已移出积累本',
+          () => changeOriginalExcerpts(() => mergeImages([item]), '已撤销')
+        );
+      }
       const before = state.excerpts;
       if (!save({...state, excerpts: before.filter(entry => entry.id !== item.id)})) return;
       updateCount();
@@ -149,14 +197,37 @@ function renderNotes() {
     actions.append(label, back, remove);
     const clip = document.createElement('div');
     clip.className = 'clip';
-    const mark = document.createElement('mark');
-    mark.textContent = documents.get(item.document).text.slice(item.start, item.end);
-    clip.append(mark);
+    if (original) {
+      const image = document.createElement('img');
+      image.alt = '客观题原图摘录';
+      image.loading = 'lazy';
+      image.src = URL.createObjectURL(item.blob);
+      imageURLs.push(image.src);
+      const zoom = document.createElement('a');
+      zoom.href = image.src;
+      zoom.target = '_blank';
+      zoom.rel = 'noopener';
+      zoom.title = '打开原图';
+      zoom.append(image);
+      clip.append(zoom);
+    } else {
+      const mark = document.createElement('mark');
+      mark.textContent = documents.get(item.document).text.slice(item.start, item.end);
+      clip.append(mark);
+    }
     const note = document.createElement('input');
     note.placeholder = '自己的备注（可选）';
     note.setAttribute('aria-label', '摘录备注');
-    note.value = item.note;
-    note.onchange = () => save({...state, excerpts: state.excerpts.map(entry => entry.id === item.id ? {...entry, note: note.value} : entry)});
+    note.value = item.note || '';
+    note.onchange = () => {
+      if (original) {
+        updateImageNote(item.id, note.value)
+          .then(() => { item.note = note.value; })
+          .catch(() => { if (reader === readers.objective) toast('无法保存备注，请重试。'); });
+      } else {
+        save({...state, excerpts: state.excerpts.map(entry => entry.id === item.id ? {...entry, note: note.value} : entry)});
+      }
+    };
     card.append(actions, clip, note);
     list.append(card);
   }
@@ -280,7 +351,13 @@ document.addEventListener('keydown', event => {
   }
 });
 $('bookTab').onclick = () => { if (current && !reading) openDocument(current.id); };
-$('notesTab').onclick = () => { rememberPosition(); showReading(false); renderNotes(); window.scrollTo(0, 0); };
+$('notesTab').onclick = () => {
+  rememberPosition();
+  showReading(false);
+  renderNotes();
+  window.scrollTo(0, 0);
+  if (reader === readers.objective) refreshOriginalExcerpts();
+};
 $('subjects').onchange = event => openDocument(event.target.value, undefined, state.order === 'all-frequency' ? 'subject-frequency' : state.order);
 $('order').onchange = event => {
   if (!current) return;
@@ -303,13 +380,20 @@ $('addBookmark').onclick = () => {
 $('openBookmarks').onclick = () => { renderBookmarks(); $('bookmarkDialog').showModal(); };
 $('closeBookmarks').onclick = () => $('bookmarkDialog').close();
 $('print').onclick = () => window.print();
-$('export').onclick = () => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify({version: 1, book: reader.backup, ...state})], {type: 'application/json'}));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `政治${reader.name}积累本备份.json`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+$('export').onclick = async () => {
+  const source = reader;
+  const data = {version: 1, book: source.backup, ...state};
+  try {
+    if (source === readers.objective) data.original = await exportImageBackup();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: 'application/json'}));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `政治${source.name}积累本备份.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch {
+    if (reader === source) toast('无法导出备份，请重试。');
+  }
 };
 $('import').onclick = () => $('importFile').click();
 $('importFile').onchange = async event => {
@@ -317,17 +401,32 @@ $('importFile').onchange = async event => {
   if (!file) return;
   const importReader = reader;
   try {
-    if (file.size > 5000000) throw new Error('Backup too large');
+    const objective = importReader === readers.objective;
+    if (file.size > (objective ? 180000000 : 5000000)) throw new Error('Backup too large');
     const data = JSON.parse(await file.text());
     if (reader !== importReader) return;
+    if (objective && isImageBackup(data)) {
+      const images = await readImageBackup(data);
+      await mergeImages(images);
+      await refreshOriginalExcerpts();
+      if (reader === importReader) toast(`已合并导入 ${images.length} 条原图摘录`);
+      return;
+    }
     if (data.version !== 1 || data.book !== reader.backup) throw new Error('Wrong backup type');
     const imported = validate(data);
+    if (objective && data.original) {
+      await mergeImages(await readImageBackup(data.original));
+      await refreshOriginalExcerpts();
+      if (reader !== importReader) return;
+    }
     const merge = (a, b) => [...new Map([...a, ...b].map(item => [item.id, item])).values()];
     if (save({...state, excerpts: merge(state.excerpts, imported.excerpts), bookmarks: merge(state.bookmarks, imported.bookmarks), positions: {...state.positions, ...imported.positions}})) {
       renderText(); renderNotes(); toast('已合并导入积累与书签');
     }
   } catch {
-    if (reader === importReader) toast(`导入失败，请选择${reader.name}积累本导出的备份。`);
+    if (reader === importReader) toast(importReader === readers.objective
+      ? '导入失败，请选择客观题原图版或文本版的 JSON 备份。'
+      : '导入失败，请选择主观题积累本导出的备份。');
   } finally {
     event.target.value = '';
   }
@@ -356,6 +455,7 @@ async function switchReader() {
     clearTimeout(toastTimer);
     $('toast').hidden = true;
     if ($('bookmarkDialog').open) $('bookmarkDialog').close();
+    clearNoteImages();
     $('notebook').replaceChildren();
     reader = next;
     current = null;
@@ -377,6 +477,7 @@ async function switchReader() {
     }
     $('subjects').replaceChildren(...data.map(doc => new Option(reader.id === 'objective' ? doc.name : `${doc.name} · 第 ${doc.id} 题`, doc.id)));
     openDocument(state.document);
+    if (reader === readers.objective) refreshOriginalExcerpts();
   } catch {
     readerData.delete(next);
     if (next !== requestedReader()) return;
@@ -391,3 +492,4 @@ tabs?.addEventListener('click', event => {
   if (event.target.closest('a')?.hash === location.hash) switchReader();
 });
 await switchReader();
+if (current && new URLSearchParams(location.search).get('view') === 'notes') $('notesTab').click();
