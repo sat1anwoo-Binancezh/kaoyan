@@ -2,12 +2,16 @@ import {createLayout} from './subjective-text.mjs?v=5';
 
 const $ = id => document.getElementById(id);
 const body = $('body');
-const objective = document.documentElement.dataset.reader === 'objective';
-const readerName = objective ? '客观题' : '主观题';
-const firstId = objective ? '1' : '34';
-const backupBook = objective ? 'politics-objective-2027' : 'politics-subjective-2027';
-const storageKey = objective ? 'politics-objective-text-v1' : 'politics-subjective-pdf-text-v1';
-const emptyState = () => ({excerpts: [], bookmarks: [], positions: {}, document: firstId, order: 'original', allPosition: null});
+const tabs = $('readerModes');
+const readers = {
+  objective: {id: 'objective', name: '客观题', firstId: '1', backup: 'politics-objective-2027', storage: 'politics-objective-text-v1', source: './objective-markdown.json?v=1'},
+  subjective: {id: 'subjective', name: '主观题', firstId: '34', backup: 'politics-subjective-2027', storage: 'politics-subjective-pdf-text-v1', source: './subjective-markdown.json?v=3'}
+};
+const initialReader = document.documentElement.dataset.reader === 'objective' ? readers.objective : readers.subjective;
+const requestedReader = () => tabs && location.hash === '#subjective' ? readers.subjective : initialReader;
+const readerData = new Map();
+let reader = initialReader;
+const emptyState = () => ({excerpts: [], bookmarks: [], positions: {}, document: reader.firstId, order: 'original', allPosition: null});
 let state = emptyState();
 let documents = new Map();
 let current, layout, toastTimer, positionTimer;
@@ -29,7 +33,7 @@ function toast(message, undo) {
 
 function save(next = state) {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(next));
+    localStorage.setItem(reader.storage, JSON.stringify(next));
     state = next;
     return true;
   } catch {
@@ -262,7 +266,7 @@ function validate(data) {
   const positions = Object.fromEntries(Object.entries(data.positions || {}).filter(([id, value]) => validOffset(id, value)));
   const order = ['original', 'subject-frequency', 'all-frequency'].includes(data.order) ? data.order : 'original';
   const allPosition = data.allPosition && validOffset(data.allPosition.document, data.allPosition.offset) ? data.allPosition : null;
-  return {excerpts, bookmarks, positions, order, allPosition, document: documents.has(data.document) ? data.document : firstId};
+  return {excerpts, bookmarks, positions, order, allPosition, document: documents.has(data.document) ? data.document : reader.firstId};
 }
 
 $('toggleSelection').onmousedown = event => event.preventDefault();
@@ -300,10 +304,10 @@ $('openBookmarks').onclick = () => { renderBookmarks(); $('bookmarkDialog').show
 $('closeBookmarks').onclick = () => $('bookmarkDialog').close();
 $('print').onclick = () => window.print();
 $('export').onclick = () => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify({version: 1, book: backupBook, ...state})], {type: 'application/json'}));
+  const url = URL.createObjectURL(new Blob([JSON.stringify({version: 1, book: reader.backup, ...state})], {type: 'application/json'}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = `政治${readerName}积累本备份.json`;
+  link.download = `政治${reader.name}积累本备份.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
@@ -311,17 +315,19 @@ $('import').onclick = () => $('importFile').click();
 $('importFile').onchange = async event => {
   const file = event.target.files[0];
   if (!file) return;
+  const importReader = reader;
   try {
     if (file.size > 5000000) throw new Error('Backup too large');
     const data = JSON.parse(await file.text());
-    if (data.version !== 1 || data.book !== backupBook) throw new Error('Wrong backup type');
+    if (reader !== importReader) return;
+    if (data.version !== 1 || data.book !== reader.backup) throw new Error('Wrong backup type');
     const imported = validate(data);
     const merge = (a, b) => [...new Map([...a, ...b].map(item => [item.id, item])).values()];
     if (save({...state, excerpts: merge(state.excerpts, imported.excerpts), bookmarks: merge(state.bookmarks, imported.bookmarks), positions: {...state.positions, ...imported.positions}})) {
       renderText(); renderNotes(); toast('已合并导入积累与书签');
     }
   } catch {
-    toast(`导入失败，请选择${readerName}积累本导出的备份。`);
+    if (reader === importReader) toast(`导入失败，请选择${reader.name}积累本导出的备份。`);
   } finally {
     event.target.value = '';
   }
@@ -333,19 +339,55 @@ window.addEventListener('scroll', () => {
 window.addEventListener('pagehide', rememberPosition);
 try { history.scrollRestoration = 'manual'; } catch {}
 
-try {
-  const response = await fetch(objective ? './objective-markdown.json?v=1' : './subjective-markdown.json?v=3');
-  if (!response.ok) throw new Error('Text unavailable');
-  documents = new Map((await response.json()).map(doc => [doc.id, doc]));
-  layout = createLayout(body, documents);
+async function switchReader() {
+  const next = requestedReader();
+  if (next === reader && current) return;
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) state = validate(JSON.parse(raw));
+    if (!readerData.has(next)) {
+      readerData.set(next, fetch(next.source).then(response => {
+        if (!response.ok) throw new Error('Text unavailable');
+        return response.json();
+      }));
+    }
+    const data = await readerData.get(next);
+    if (next !== requestedReader() || (next === reader && current)) return;
+    rememberPosition();
+    window.getSelection()?.removeAllRanges();
+    clearTimeout(toastTimer);
+    $('toast').hidden = true;
+    if ($('bookmarkDialog').open) $('bookmarkDialog').close();
+    $('notebook').replaceChildren();
+    reader = next;
+    current = null;
+    documents = new Map(data.map(doc => [doc.id, doc]));
+    layout = createLayout(body, documents);
+    state = emptyState();
+    try {
+      const raw = localStorage.getItem(reader.storage);
+      if (raw) state = validate(JSON.parse(raw));
+    } catch {
+      toast('已有记录未能读取。');
+    }
+    document.documentElement.dataset.reader = reader.id;
+    document.title = `政治宝典 · ${reader.name}`;
+    $('notebook').setAttribute('aria-label', `${reader.name}积累本`);
+    for (const tab of tabs?.querySelectorAll('a') ?? []) {
+      if (tab.hash === '#' + reader.id) tab.setAttribute('aria-current', 'page');
+      else tab.removeAttribute('aria-current');
+    }
+    $('subjects').replaceChildren(...data.map(doc => new Option(reader.id === 'objective' ? doc.name : `${doc.name} · 第 ${doc.id} 题`, doc.id)));
+    openDocument(state.document);
   } catch {
-    toast('已有记录未能读取。');
+    readerData.delete(next);
+    if (next !== requestedReader()) return;
+    const message = `${next.name}载入失败，请重试。`;
+    if (current) toast(message);
+    else $('title').textContent = message;
   }
-  for (const doc of documents.values()) $('subjects').add(new Option(objective ? doc.name : `${doc.name} · 第 ${doc.id} 题`, doc.id));
-  openDocument(state.document);
-} catch {
-  $('title').textContent = `${readerName}原文载入失败，请刷新重试。`;
 }
+
+window.addEventListener('hashchange', switchReader);
+tabs?.addEventListener('click', event => {
+  if (event.target.closest('a')?.hash === location.hash) switchReader();
+});
+await switchReader();

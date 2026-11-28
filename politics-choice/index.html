@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-reader="objective">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>政治宝典 · 客观题积累本</title>
+<title>政治宝典</title>
 <style>
   *{box-sizing:border-box}body{margin:0;background:#eef0f3;color:#202834;font:15px/1.7 "Microsoft YaHei","PingFang SC",sans-serif}
   header{position:sticky;top:0;z-index:2;background:#fffffff5;border-bottom:1px solid #dbe1e7;padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -30,7 +30,9 @@
   #toast{position:fixed;z-index:3;bottom:22px;left:50%;transform:translateX(-50%);background:#173f37;color:white;padding:8px 13px;border-radius:8px;max-width:94vw}#toast button{margin-left:8px}
   :focus-visible{outline:3px solid #347bc8;outline-offset:2px}[hidden]{display:none!important}
   header h1,header .toolbar + .toolbar{margin:0}header h1{white-space:nowrap}header .toolbar{flex:1}header .toolbar:last-child{justify-content:flex-end}
-  @media(min-width:1000px){header{flex-wrap:nowrap}header .toolbar{flex-wrap:nowrap}header #openBookmarks{margin-left:auto}header #noteTools:not([hidden]){flex:0 0 auto}}
+  #readerModes{display:flex;gap:4px}#readerModes [aria-current=page]{background:#195f54;border-color:#195f54;color:white}
+  [data-reader=subjective] .objective-only{display:none}
+  @media(min-width:1100px){header{flex-wrap:nowrap}header .toolbar{flex-wrap:nowrap}header #openBookmarks{margin-left:auto}header #noteTools:not([hidden]){flex:0 0 auto}}
   @media(max-width:600px){header{padding:9px 10px;gap:8px}h1{font-size:18px}button,select,a.link{padding:5px 7px}main{padding-inline:8px}}
   @media print{header,#reading,#toast,.actions,input,dialog{display:none!important}body,main{background:white;padding:0}.excerpt{break-inside:avoid;border:0;padding:0}#notebook{display:block!important}}
 
@@ -40,7 +42,11 @@
   .source-page:hover{text-decoration:underline}
 </style>
 <header>
-  <h1><a class="link" href="./subjective.html?v=text-4" aria-label="切换到主观题">⇄ 主观题</a>政治宝典 · 客观题</h1>
+  <h1>政治宝典</h1>
+  <nav id="readerModes" aria-label="题型">
+    <a class="link" href="#objective" aria-current="page">客观题</a>
+    <a class="link" href="#subjective">主观题</a>
+  </nav>
   <div class="toolbar">
     <button id="bookTab" class="active" aria-pressed="true">原文</button>
     <button id="notesTab" aria-pressed="false">积累本 <span id="count">0</span></button>
@@ -51,13 +57,13 @@
     <button id="openBookmarks">我的书签 <span id="bookmarkCount">0</span></button>
   </div>
   <div class="toolbar" id="noteTools" hidden>
-    <button id="export">导出备份</button><button id="import">导入备份</button><button id="print">打印 / 保存PDF</button><a class="link" href="./objective-pdf.html?view=notes">旧原图摘录</a>
+    <button id="export">导出备份</button><button id="import">导入备份</button><button id="print">打印 / 保存PDF</button><a class="link objective-only" href="./objective-pdf.html?view=notes">旧原图摘录</a>
   </div>
 </header>
 <main>
   <section id="reading">
-    <p class="tip">框选正文后按 <kbd>R</kbd> 收录或取消。 <button id="toggleSelection" type="button">收录 / 取消选中文字</button> · <a href="./objective-pdf.html">小松学长《选择题押题宝典》原图</a></p>
-    <article class="paper"><h2 id="title">正在载入客观题…</h2><div id="body"></div></article>
+    <p class="tip">框选正文后按 <kbd>R</kbd> 收录或取消。 <button id="toggleSelection" type="button">收录 / 取消选中文字</button><span class="objective-only"> · <a href="./objective-pdf.html">小松学长《选择题押题宝典》原图</a></span></p>
+    <article class="paper"><h2 id="title">正在载入题目…</h2><div id="body"></div></article>
   </section>
   <section id="notebook" hidden aria-label="客观题积累本"></section>
 </main>
@@ -67,5 +73,5 @@
 </dialog>
 <input id="importFile" type="file" accept=".json,application/json" hidden>
 <div id="toast" role="status" hidden></div>
-<script type="module" src="./subjective.mjs?v=5"></script>
+<script type="module" src="./subjective.mjs?v=6"></script>
 </html>
